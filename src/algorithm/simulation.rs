@@ -27,9 +27,9 @@ where
 
         for v in self.nodes() {
             let sim_v: HashSet<_> = if self.get_post(&adj, v).count() != 0 {
-                self.nodes().filter(|u| T::label_same(v, u)).collect()
+                self.nodes().filter(|u| self.label_same(v, u)).collect()
             } else {
-                self.nodes().filter(|u| T::label_same(v, u) && self.get_post(&adj,u).count() != 0).collect()
+                self.nodes().filter(|u| self.label_same(v, u) && self.get_post(&adj,u).count() != 0).collect()
             };
             simulation.insert(v, sim_v.clone());
 
