@@ -1,4 +1,5 @@
-use std::hash::Hash;
+use std::fmt::Display;
+use std::{hash::Hash, iter::FromIterator};
 use std::collections::HashMap;
 use crate::graph::base::{Graph, Directed, Adjacency, AdjacencyInv};
 
@@ -6,6 +7,13 @@ use crate::graph::base::{Graph, Directed, Adjacency, AdjacencyInv};
 pub struct LabelNode<L: Label> {
     id: u64,
     label: L
+}
+
+impl<L: Label> Display for LabelNode<L> 
+where L: Label {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[id: {}, label: {}]", self.id, self.label)
+    }
 }
 
 #[derive(Hash, Eq, PartialEq, Clone)]
@@ -25,7 +33,7 @@ pub struct LabeledGraph<L1: Label, L2: Label> {
 }
 
 
-pub trait Label: Hash + Eq + Clone {
+pub trait Label: Hash + Eq + Clone + Display {
     // type Value;    
 }
 
@@ -36,6 +44,12 @@ pub trait Labeled<'a>: Graph<'a> {
 
 #[derive(Hash, Eq, Clone)]
 pub struct SingleLabel(());
+
+impl Display for SingleLabel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "")
+    }
+}
 
 impl Label for SingleLabel {}
 
@@ -54,15 +68,15 @@ impl<'a> Graph<'a> for StandardLabeledGraph {
 
     type Edge = LabeledEdge<SingleLabel>;
 
-    fn nodes(&'a self) -> impl Iterator<Item = &Self::Node> {
+    fn nodes(&'a self) -> impl Iterator<Item = &'a Self::Node> {
         self.nodes.iter()
     }
 
-    fn edges(&'a self) -> impl Iterator<Item = &Self::Edge> {
+    fn edges(&'a self) -> impl Iterator<Item = &'a Self::Edge> {
         self.edges.iter()
     }
 
-    fn get_edges_pair(&'a self) -> impl Iterator<Item = (&Self::Node, &Self::Node)> {
+    fn get_edges_pair(&'a self) -> impl Iterator<Item = (&'a Self::Node, &'a Self::Node)> {
         let id_map: HashMap<_, _, std::collections::hash_map::RandomState> = HashMap::from_iter(self.nodes.iter().map(|node| (node.id, node)));
         self.edges.iter().map(|edge| (id_map.get(&edge.src).unwrap().clone(), id_map.get(&edge.dst).unwrap().clone()) ).collect::<Vec<_>>().into_iter()
     }
@@ -99,6 +113,36 @@ impl StandardLabeledGraph {
             edges: Vec::new(),
         }
     }
+
+    pub fn add_node(&mut self, id: u64, label: String) {
+        self.nodes.push(LabelNode {
+            id,
+            label
+        });
+    }
+
+    pub fn add_edge(&mut self, src: u64, dst: u64) {
+        self.edges.push(LabeledEdge {
+            src,
+            dst,
+            label: SingleLabel(())
+        });
+    }
+}
+
+impl Display for StandardLabeledGraph {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut s = String::new();
+        s.push_str("nodes: ");
+        for node in self.nodes.iter() {
+            s.push_str(format!("{}, ", node).as_str());
+        }
+        s.push_str("\nedges: ");
+        for edge in self.edges.iter() {
+            s.push_str(format!("{} -> {}, ", edge.src, edge.dst).as_str());
+        }
+        write!(f, "{}", s)
+    }
 }
 
 trait HyperLabeled<'a>: Labeled<'a> {
@@ -116,15 +160,15 @@ impl<'a, L: Label> Graph<'a> for HyperLabelGraph<L> {
     type Node = LabelNode<L>;
     type Edge = LabeledEdge<SingleLabel>;
 
-    fn nodes(&'a self) -> impl Iterator<Item = &Self::Node> {
+    fn nodes(&'a self) -> impl Iterator<Item = &'a Self::Node> {
         self.nodes.iter()
     }
 
-    fn edges(&'a self) -> impl Iterator<Item = &Self::Edge> {
+    fn edges(&'a self) -> impl Iterator<Item = &'a Self::Edge> {
         self.edges.iter()
     }
 
-    fn get_edges_pair(&'a self) -> impl Iterator<Item = (&Self::Node, &Self::Node)> {
+    fn get_edges_pair(&'a self) -> impl Iterator<Item = (&'a Self::Node, &'a Self::Node)> {
         let id_map: HashMap<_, _, std::collections::hash_map::RandomState> = HashMap::from_iter(self.nodes.iter().map(|node| (node.id, node)));
         self.edges.iter().map(|edge| (id_map.get(&edge.src).unwrap().clone(), id_map.get(&edge.dst).unwrap().clone()) ).collect::<Vec<_>>().into_iter()
     }

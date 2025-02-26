@@ -1,23 +1,38 @@
-use std::{collections::HashMap, hash::Hash};
-
+use std::{collections::HashMap, fmt::Display, hash::Hash};
 
 pub trait Graph<'a> {
-    type Node: Eq + Hash + Clone + Sized;
+    type Node: Eq + Hash + Clone + Sized + Display;
     type Edge: Eq + Hash + Clone;
-    fn nodes(&'a self) -> impl Iterator<Item = &Self::Node>;
-    fn edges(&'a self) -> impl Iterator<Item = &Self::Edge>;
-    fn get_edges_pair(&'a self) -> impl Iterator<Item = (&Self::Node, &Self::Node)>;
+    fn nodes(&'a self) -> impl Iterator<Item = &'a Self::Node>;
+    fn edges(&'a self) -> impl Iterator<Item = &'a Self::Edge>;
+    fn get_edges_pair(&'a self) -> impl Iterator<Item = (&'a Self::Node, &'a Self::Node)>;
     fn add_node(&mut self, node: Self::Node);
     fn add_edge(&mut self, edge: Self::Edge);
 }
 
-pub trait Directed {
-    
+pub trait Directed {}
+
+pub struct AdjacencyList<'a, T: Graph<'a>>(HashMap<&'a T::Node, Vec<&'a T::Node>>);
+
+impl<'a, T> Display for AdjacencyList<'a, T> 
+where T: Graph<'a> {    
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut s = String::new();
+        for (node, adj) in self.0.iter() {
+            
+            let s1 = format!("{}", node);
+            let mut s2 = String::new();
+            for node in adj {
+                s2.push_str(format!("{}, ", node).as_str());
+            }
+
+            s.push_str(format!("Node {} -> {{{}}}\n", s1, s2).as_str());
+        }
+        write!(f, "{}", s)
+    }
 }
 
-type AdjacencyList<'a, T: Graph<'a>> = HashMap<&'a T::Node, Vec<&'a T::Node>>;
-
-pub trait Adjacency<'a>: Graph<'a> + Directed {
+pub trait Adjacency<'a>: Graph<'a> + Directed + Sized {
     fn get_adj(&'a self) -> AdjacencyList<'a, Self> {
         let mut adj = HashMap::new();
         for node in self.nodes() {
@@ -26,14 +41,15 @@ pub trait Adjacency<'a>: Graph<'a> + Directed {
         for (src, dst) in self.get_edges_pair() {
             adj.get_mut(src).unwrap().push(dst);
         }
-        adj
+
+        AdjacencyList(adj)
     }
     fn get_post(&'a self, adj: &AdjacencyList<'a, Self>, node: &Self::Node) -> impl Iterator<Item = &'a Self::Node> {
-        adj.get(node).unwrap().iter().copied()
+        adj.0.get(node).expect(format!("No node in adjacency table named {} \n adj is: {}", node, adj).as_str()).iter().copied()
     }
 }
 
-pub trait AdjacencyInv<'a>: Graph<'a> + Directed {
+pub trait AdjacencyInv<'a>: Graph<'a> + Directed + Sized {
     fn get_adj_inv(&'a self) -> AdjacencyList<'a, Self> {
         let mut adj_inv = HashMap::new();
         for node in self.nodes() {
@@ -42,9 +58,9 @@ pub trait AdjacencyInv<'a>: Graph<'a> + Directed {
         for (src, dst) in self.get_edges_pair() {
             adj_inv.get_mut(dst).unwrap().push(src);
         }
-        adj_inv
+        AdjacencyList(adj_inv)
     }
     fn get_pre(&'a self, adj_inv: &AdjacencyList<'a, Self>, node: &Self::Node) -> impl Iterator<Item = &'a Self::Node> {
-        adj_inv.get(node).unwrap().iter().copied()
+        adj_inv.0.get(node).expect(format!("No node in adjacency table named {} \n adj is: {}", node, adj_inv).as_str()).iter().copied()
     }
 }

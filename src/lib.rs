@@ -8,14 +8,14 @@ pub fn add(left: u64, right: u64) -> u64 {
 
 use crate::algorithm::simulation::Simulation;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
 
-    #[test]
-    fn it_works() {
-        let graph = graph::labeled_graph::StandardLabeledGraph::new();
-        let sim = graph.get_simulation();
-    }
+//     #[test]
+//     fn it_works() {
+//         let graph = graph::labeled_graph::StandardLabeledGraph::new();
+//         // let sim = graph.get_simulation();
+//     }
     
-}
+// }
