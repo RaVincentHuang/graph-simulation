@@ -1,13 +1,31 @@
 use std::{collections::HashMap, fmt::Display, hash::Hash};
 
 pub trait Graph<'a> {
-    type Node: Eq + Hash + Clone + Sized + Display;
-    type Edge: Eq + Hash + Clone;
+    type Node: Eq + Hash + Clone + Sized + Display + SingleId;
+    type Edge: Eq + Hash + Clone + IdPair;
     fn nodes(&'a self) -> impl Iterator<Item = &'a Self::Node>;
     fn edges(&'a self) -> impl Iterator<Item = &'a Self::Edge>;
-    fn get_edges_pair(&'a self) -> impl Iterator<Item = (&'a Self::Node, &'a Self::Node)>;
+    fn get_edges_pair(&'a self) -> impl Iterator<Item = (&'a Self::Node, &'a Self::Node)> {
+        let id_map: HashMap<_, _> = HashMap::from_iter(self.nodes().map(|node| (node.id(), node)));
+        self.edges().map(move |edge| (id_map.get(&edge.pair().0).unwrap().clone(), id_map.get(&edge.pair().1).unwrap().clone()) ).collect::<Vec<_>>().into_iter()
+    }
+    fn get_edges_pair_with_edge(&'a self) -> impl Iterator<Item = (&'a Self::Node, &'a Self::Edge, &'a Self::Node)> {
+        let id_map: HashMap<_, _> = HashMap::from_iter(self.nodes().map(|node| (node.id(), node)));
+        self.edges().map(move |edge| (id_map.get(&edge.pair().0).unwrap().clone(), edge, id_map.get(&edge.pair().1).unwrap().clone()) ).collect::<Vec<_>>().into_iter()
+    }
     fn add_node(&mut self, node: Self::Node);
     fn add_edge(&mut self, edge: Self::Edge);
+}
+
+pub trait SingleId {
+    fn id(&self) -> usize;
+}
+pub trait Label {
+    fn label(&self) -> &str;
+}
+
+pub trait IdPair {
+    fn pair(&self) -> (usize, usize);
 }
 
 pub trait Directed {}

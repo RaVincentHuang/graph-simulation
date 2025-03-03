@@ -1,5 +1,5 @@
 use crate::graph::base::{Adjacency, AdjacencyInv, Graph, Directed};
-use crate::graph::labeled_graph::Labeled;
+use crate::graph::labeled_graph::{Labeled, Label, LabeledAdjacency};
 
 use std::cell::RefCell;
 use std::collections::{HashSet, HashMap};
@@ -11,14 +11,18 @@ pub trait Simulation<'a> {
     fn get_simulation_inter(&'a self, other: &'a Self) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
 
     fn get_simulation_native(&'a self, other: &'a Self) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
+
+    fn get_simulation_of_node_edge(&'a self, other: &'a Self) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
+
+    fn get_simulation_of_edge(&'a self, other: &'a Self) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
     
     fn has_simulation(sim: HashMap<&'a Self::Node, HashSet<&'a Self::Node>>) -> bool;
 }
 
 impl<'a, 'b, T> Simulation<'a> for T
 where 
-    T: Graph<'a> + Adjacency<'a> + AdjacencyInv<'a> + Labeled<'a> + Directed,
-    T::Node: 'a,
+    T: Graph<'a> + Adjacency<'a> + AdjacencyInv<'a> + Labeled<'a> + Directed + LabeledAdjacency<'a>,
+    T::Node: 'a, T::Edge: 'a,
     'b: 'a
 {
     type Node = T::Node;
@@ -141,6 +145,80 @@ where
                     let mut v_need_remove = true;
                     for v_prime in other.get_post(&adj_other, v) {
                         if simulation.get(u_prime).unwrap().contains(v_prime) {
+                            v_need_remove = false;
+                            break;
+                        }
+                    }
+                    if v_need_remove {
+                        sim_u_remove.insert(v.clone());
+                        changed = true;
+                    }
+                }
+                for v in sim_u_remove {
+                    simulation.get_mut(u).unwrap().remove(v);
+                }
+            }
+        }
+
+        
+        simulation
+    }
+
+    fn get_simulation_of_node_edge(&'a self, other: &'a Self) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>> {
+        let mut simulation: HashMap<&'a <T as Graph<'_>>::Node, HashSet<&'a <T as Graph<'_>>::Node>> = HashMap::new();
+        let (adj_other, _) = (other.get_labeled_adj(), other.get_adj_inv());
+        
+        for v in self.nodes() {
+            let sim_v: HashSet<_> = other.nodes().filter(|u| self.label_same(v, u)).collect();
+            simulation.insert(v, sim_v.clone());
+        }
+
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for (u,  u_edge, u_prime) in self.get_edges_pair_with_edge() {
+                let mut sim_u_remove = HashSet::new();
+                for v in simulation.get(u).unwrap() {
+                    let mut v_need_remove = true;
+                    for (v_prime, v_edge) in other.get_labeled_post(&adj_other, v) {
+                        if self.edge_label_same(u_edge, v_edge) && simulation.get(u_prime).unwrap().contains(v_prime) {
+                            v_need_remove = false;
+                            break;
+                        }
+                    }
+                    if v_need_remove {
+                        sim_u_remove.insert(v.clone());
+                        changed = true;
+                    }
+                }
+                for v in sim_u_remove {
+                    simulation.get_mut(u).unwrap().remove(v);
+                }
+            }
+        }
+
+        
+        simulation
+    }
+
+    fn get_simulation_of_edge(&'a self, other: &'a Self) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>> {
+        let mut simulation: HashMap<&'a <T as Graph<'_>>::Node, HashSet<&'a <T as Graph<'_>>::Node>> = HashMap::new();
+        let (adj_other, _) = (other.get_labeled_adj(), other.get_adj_inv());
+        
+        for v in self.nodes() {
+            let sim_v: HashSet<_> = other.nodes().collect();
+            simulation.insert(v, sim_v.clone());
+        }
+
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for (u,  u_edge, u_prime) in self.get_edges_pair_with_edge() {
+                let mut sim_u_remove = HashSet::new();
+                for v in simulation.get(u).unwrap() {
+                    let mut v_need_remove = true;
+                    for (v_prime, v_edge) in other.get_labeled_post(&adj_other, v) {
+                        if self.edge_node_label_same(u, u_edge, u_prime, v, v_edge, v_prime) && simulation.get(u_prime).unwrap().contains(v_prime) {
                             v_need_remove = false;
                             break;
                         }
