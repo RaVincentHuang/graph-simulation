@@ -1,6 +1,5 @@
 use graph_base::interfaces::graph::{Adjacency, AdjacencyInv, Graph, Directed};
-use graph_base::interfaces::labeled::{Labeled, Label};
-use graph_base::impls::standard::LabeledAdjacency;
+use graph_base::interfaces::labeled::{Labeled, LabeledAdjacency};
 
 use std::cell::RefCell;
 use std::collections::{HashSet, HashMap};

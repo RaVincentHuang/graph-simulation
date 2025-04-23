@@ -2,7 +2,7 @@ use graph_base::impls::standard::StandardLabeledGraph;
 use graph_simulation::algorithm::simulation::Simulation;
 use std::fs;
 
-// #[test]
+#[test]
 fn simulation_native_test() {
     let paths = fs::read_dir(format!("{}/data/label_graph/simulation_test/", env!("CARGO_MANIFEST_DIR"))).expect("Unable to read directory");
     for path in paths {
