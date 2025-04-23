@@ -114,7 +114,6 @@ where
                         simulation.get_mut(u).unwrap().remove(w);
                         for w_prime in other.get_pre(&adj_inv_other, w) {
                             if other.get_post(&adj_other, w_prime).collect::<HashSet<_>>().intersection(simulation.get(u).unwrap()).count() == 0 {
-                                // remove.borrow_mut().get_mut(u).unwrap().insert(w_prime);
                                 remove_u_add.insert(w_prime);
                             }
                         }
@@ -243,4 +242,10 @@ where
             sim_v.len() != 0
         })
     }
+}
+
+pub trait HyperSimulation<'a> {
+    type Node: 'a;
+
+    fn get_hyper_simulation_inter(&'a self, other: &'a Self) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
 }
