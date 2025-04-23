@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::env;
 
-use graph_simulation::graph::base::Graph;
-use graph_simulation::graph::labeled_graph::StandardLabeledGraph;
+use graph_base::impls::standard::StandardLabeledGraph;
+use graph_base::interfaces::graph::Graph;
 use graph_simulation::algorithm::simulation::Simulation;
 use std::fs;
 

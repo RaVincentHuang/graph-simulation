@@ -1,5 +1,4 @@
-use graph_simulation::graph::base::Graph;
-use graph_simulation::graph::labeled_graph::StandardLabeledGraph;
+use graph_base::impls::standard::StandardLabeledGraph;
 use graph_simulation::algorithm::simulation::Simulation;
 use std::fs;
 
