@@ -5,8 +5,8 @@ use itertools::Itertools;
 use graph_base::interfaces::{edge::DirectedHyperedge, graph::SingleId, hypergraph::{ContainedDirectedHyperedge, ContainedHyperedge, DirectedHypergraph, Hypergraph}, typed::{Type, Typed}};
 
 pub trait LMatch<'a>: Hypergraph<'a> {
-    fn l_match(&'a self, e: &'a Self::Edge, e_prime: &'a Self::Edge) -> impl Fn(&'a Self::Node) -> &'a HashSet<&'a Self::Node>;
-    fn dom(&'a self, l_match: impl Fn(&'a Self::Node) -> &'a HashSet<&'a Self::Node>) -> impl Iterator<Item = &'a Self::Node>;
+    fn l_match(&'a self, e: &'a Self::Edge, e_prime: &'a Self::Edge) -> impl Fn(&Self::Node) -> &HashSet<&Self::Node>;
+    fn dom(&'a self, l_match: impl Fn(&Self::Node) -> &HashSet<&Self::Node>) -> impl Iterator<Item = &'a Self::Node>;
 }
 
 pub trait LPredicate<'a>: Hypergraph<'a> {
