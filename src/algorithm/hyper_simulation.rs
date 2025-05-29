@@ -24,7 +24,7 @@ pub trait HyperSimulation<'a> {
 }
 
 impl<'a, H> HyperSimulation<'a> for H 
-where H: Hypergraph<'a> + Typed + LMatch<'a> + LPredicate<'a> + ContainedHyperedge<'a>, H::Node: Type {
+where H: Hypergraph<'a> + Typed<'a> + LMatch<'a> + LPredicate<'a> + ContainedHyperedge<'a> {
     type Node = H::Node;
 
     fn get_simulation_fixpoint(&'a self, other: &'a Self) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>> {
@@ -119,7 +119,7 @@ pub trait DiHyperSimulation<'a> {
 
 impl<'a, H> DiHyperSimulation<'a> for H 
 where 
-    H: DirectedHypergraph<'a> + Typed + LMatch<'a> + LPredicate<'a> + ContainedDirectedHyperedge<'a>,
+    H: DirectedHypergraph<'a> + Typed<'a> + LMatch<'a> + LPredicate<'a> + ContainedDirectedHyperedge<'a>,
     H::Node: Type, H::Edge: DirectedHyperedge {
     type Node = H::Node;
 
