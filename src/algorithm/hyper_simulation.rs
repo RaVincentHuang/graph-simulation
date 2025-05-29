@@ -4,8 +4,8 @@ use graph_base::interfaces::{edge::DirectedHyperedge, graph::SingleId, hypergrap
 
 pub trait LMatch<'a>: Hypergraph<'a> {
     // fn l_match(&'a self, e: &'a Self::Edge, e_prime: &'a Self::Edge) -> HashMap<&'a Self::Node, &'a HashSet<&'a Self::Node>>;
-    fn l_match_with_node(&'a self, e: &'a Self::Edge, e_prime: &'a Self::Edge, u: &'a Self::Node) -> &'a HashSet<&'a Self::Node>;
-    fn dom(&'a self, e: &'a Self::Edge, e_prime: &'a Self::Edge) -> impl Iterator<Item = &'a Self::Node>;
+    fn l_match_with_node(&self, e: &Self::Edge, e_prime: &Self::Edge, u: &Self::Node) -> &HashSet<&Self::Node>;
+    fn dom(&self, e: &Self::Edge, e_prime: &Self::Edge) -> Vec<&Self::Node>;
 }
 
 pub trait LPredicate<'a>: Hypergraph<'a> {
@@ -81,7 +81,7 @@ where H: Hypergraph<'a> + Typed<'a> + LMatch<'a> + LPredicate<'a> + ContainedHyp
                         }
                         for e_prime in other.contained_hyperedges(&other_contained_hyperedge, v) {
                             if self.l_predicate_edge(e, e_prime) {
-                                if self.dom(e, e_prime).all(|u_prime| {
+                                if self.dom(e, e_prime).iter().all(|u_prime| {
                                     self.l_match_with_node(e, e_prime, u_prime).iter().any(|v_prime| {
                                         simulation.get(u).unwrap().contains(v_prime)
                                     })
