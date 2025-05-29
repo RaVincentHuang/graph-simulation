@@ -1,12 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
-use itertools::Itertools;
-
 use graph_base::interfaces::{edge::DirectedHyperedge, graph::SingleId, hypergraph::{ContainedDirectedHyperedge, ContainedHyperedge, DirectedHypergraph, Hypergraph}, typed::{Type, Typed}};
 
 pub trait LMatch<'a>: Hypergraph<'a> {
-    fn l_match(&'a self, e: &'a Self::Edge, e_prime: &'a Self::Edge) -> impl Fn(&Self::Node) -> &HashSet<&Self::Node>;
-    fn dom(&'a self, l_match: impl Fn(&Self::Node) -> &HashSet<&Self::Node>) -> impl Iterator<Item = &'a Self::Node>;
+    // fn l_match(&'a self, e: &'a Self::Edge, e_prime: &'a Self::Edge) -> HashMap<&'a Self::Node, &'a HashSet<&'a Self::Node>>;
+    fn l_match_with_node(&'a self, e: &'a Self::Edge, e_prime: &'a Self::Edge, u: &'a Self::Node) -> &'a HashSet<&'a Self::Node>;
+    fn dom(&'a self, e: &'a Self::Edge, e_prime: &'a Self::Edge) -> impl Iterator<Item = &'a Self::Node>;
 }
 
 pub trait LPredicate<'a>: Hypergraph<'a> {
@@ -49,8 +48,8 @@ where H: Hypergraph<'a> + Typed<'a> + LMatch<'a> + LPredicate<'a> + ContainedHyp
                         let mut l_match_union: HashSet<usize> = HashSet::new();
                         for e_prime in other.contained_hyperedges(&other_contained_hyperedge, v) {
                             if self.l_predicate_edge(e, e_prime) {
-                                let l_match = self.l_match(e, e_prime);
-                                let id_set = l_match(u).iter().map(|v_prime| v_prime.id()).collect::<HashSet<_>>();
+                                // let l_match = self.l_match(e, e_prime);
+                                let id_set = self.l_match_with_node(e, e_prime, u).iter().map(|v_prime| v_prime.id()).collect::<HashSet<_>>();
                                 l_match_union = l_match_union.union(&id_set).copied().collect();
                             }
                         }
@@ -82,9 +81,8 @@ where H: Hypergraph<'a> + Typed<'a> + LMatch<'a> + LPredicate<'a> + ContainedHyp
                         }
                         for e_prime in other.contained_hyperedges(&other_contained_hyperedge, v) {
                             if self.l_predicate_edge(e, e_prime) {
-                                let l_match = self.l_match(e, e_prime);
-                                if self.dom(&l_match).all(|u_prime| {
-                                    l_match(u_prime).iter().any(|v_prime| {
+                                if self.dom(e, e_prime).all(|u_prime| {
+                                    self.l_match_with_node(e, e_prime, u_prime).iter().any(|v_prime| {
                                         simulation.get(u).unwrap().contains(v_prime)
                                     })
                                 }) {
