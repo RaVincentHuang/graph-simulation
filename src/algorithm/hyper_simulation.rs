@@ -4,8 +4,8 @@ use graph_base::interfaces::{edge::DirectedHyperedge, graph::SingleId, hypergrap
 
 pub trait LMatch<'a>: Hypergraph<'a> {
     // fn l_match(&'a self, e: &'a Self::Edge, e_prime: &'a Self::Edge) -> HashMap<&'a Self::Node, &'a HashSet<&'a Self::Node>>;
-    fn l_match_with_node(&self, e: &Self::Edge, e_prime: &Self::Edge, u: &Self::Node) -> &HashSet<&Self::Node>;
-    fn dom(&self, e: &Self::Edge, e_prime: &Self::Edge) -> Vec<&Self::Node>;
+    fn l_match_with_node(&self, e: &Self::Edge, e_prime: &Self::Edge, u: usize) -> &HashSet<usize>;
+    fn dom(&self, e: &Self::Edge, e_prime: &Self::Edge) -> Vec<usize>;
 }
 
 pub trait LPredicate<'a>: Hypergraph<'a> {
@@ -49,7 +49,7 @@ where H: Hypergraph<'a> + Typed<'a> + LMatch<'a> + LPredicate<'a> + ContainedHyp
                         for e_prime in other.contained_hyperedges(&other_contained_hyperedge, v) {
                             if self.l_predicate_edge(e, e_prime) {
                                 // let l_match = self.l_match(e, e_prime);
-                                let id_set = self.l_match_with_node(e, e_prime, u).iter().map(|v_prime| v_prime.id()).collect::<HashSet<_>>();
+                                let id_set = self.l_match_with_node(e, e_prime, u.id());
                                 l_match_union = l_match_union.union(&id_set).copied().collect();
                             }
                         }
@@ -82,8 +82,12 @@ where H: Hypergraph<'a> + Typed<'a> + LMatch<'a> + LPredicate<'a> + ContainedHyp
                         for e_prime in other.contained_hyperedges(&other_contained_hyperedge, v) {
                             if self.l_predicate_edge(e, e_prime) {
                                 if self.dom(e, e_prime).iter().all(|u_prime| {
-                                    self.l_match_with_node(e, e_prime, u_prime).iter().any(|v_prime| {
-                                        simulation.get(u).unwrap().contains(v_prime)
+                                    self.l_match_with_node(e, e_prime, *u_prime).iter().map(|id| {other.get_node_by_id(*id)}).any(|v_prime| {
+                                        if let Some(v_prime) = v_prime {
+                                            return simulation.get(u).unwrap().contains(v_prime);
+                                        } else {
+                                            return false;
+                                        }
                                     })
                                 }) {
                                     _delete = false;

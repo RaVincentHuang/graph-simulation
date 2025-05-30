@@ -1,13 +1,13 @@
 [package]
 name = "graph-simulation"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2021"
 license = "MIT"
 description = "A library for simulation algorithm"
 
 
 [dependencies]
-graph-base = "0.1.12"
+graph-base = "0.1.13"
 rand = "0.9.1"
 rand_pcg = "0.9.0"
 lazy_static = "1.5.0"
