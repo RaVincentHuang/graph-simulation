@@ -1,4 +1,7 @@
 use std::collections::{HashMap, HashSet};
+use log::{info, warn};
+use std::fs::File;
+use std::io::{self, Write};
 
 use graph_base::interfaces::{edge::DirectedHyperedge, graph::SingleId, hypergraph::{ContainedDirectedHyperedge, ContainedHyperedge, DirectedHypergraph, Hypergraph}, typed::{Type, Typed}};
 
@@ -24,6 +27,24 @@ pub trait HyperSimulation<'a>: Hypergraph<'a> {
     fn get_simulation_naive(&'a self, other: &'a Self, l_match: &mut impl LMatch<Edge = Self::Edge>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
 }
 
+struct MultiWriter<W1: Write, W2: Write> {
+    w1: W1,
+    w2: W2,
+}
+
+impl<W1: Write, W2: Write> Write for MultiWriter<W1, W2> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.w1.write_all(buf)?;
+        self.w2.write_all(buf)?;
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.w1.flush()?;
+        self.w2.flush()
+    }
+}
+
+
 impl<'a, H> HyperSimulation<'a> for H 
 where H: Hypergraph<'a> + Typed<'a> + LPredicate<'a> + ContainedHyperedge<'a> {
     fn get_simulation_fixpoint(&'a self, other: &'a Self, l_match: &mut impl LMatch<Edge = Self::Edge>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>> {
@@ -35,6 +56,20 @@ where H: Hypergraph<'a> + Typed<'a> + LPredicate<'a> + ContainedHyperedge<'a> {
     }
 
     fn get_simulation_naive(&'a self, other: &'a Self, l_match: &mut impl LMatch<Edge = Self::Edge>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>> {
+        
+        let log_file = File::create("hyper-simulation.log")
+            .expect("Failed to create log file");
+        let multi_writer = MultiWriter {
+            w1: log_file,
+            w2: io::stdout(),
+        };
+        
+        env_logger::Builder::new()
+            .target(env_logger::Target::Pipe(Box::new(multi_writer)))
+            .init();
+
+        info!("Start Naive Hyper Simulation");
+
         let self_contained_hyperedge = self.get_hyperedges_list();
         let other_contained_hyperedge = other.get_hyperedges_list();
 
@@ -69,7 +104,11 @@ where H: Hypergraph<'a> + Typed<'a> + LPredicate<'a> + ContainedHyperedge<'a> {
             (u, res)
         }).collect();
 
-        println!("END Initial");
+        info!("END Initial, sim: is ");
+        for (u, v_set) in &simulation {
+            info!("\tsim({}) = {:?}", u.id(), v_set.iter().map(|v| v.id()).collect::<Vec<_>>());
+        }
+        
 
         let mut changed = true;
         while changed {
@@ -77,7 +116,7 @@ where H: Hypergraph<'a> + Typed<'a> + LPredicate<'a> + ContainedHyperedge<'a> {
             for u in self.nodes() {
                 let mut need_delete = Vec::new();
                 for v in simulation.get(u).unwrap() {
-                    println!("Checking {} -> {}", u.id(), v.id());
+                    info!("Checking {} -> {}", u.id(), v.id());
                     let mut _delete = true;
                     for e in self.contained_hyperedges(&self_contained_hyperedge, u) {
                         if !_delete {
@@ -94,7 +133,7 @@ where H: Hypergraph<'a> + Typed<'a> + LPredicate<'a> + ContainedHyperedge<'a> {
                                         }
                                     })
                                 }) {
-                                    println!("Keeping {} -> {}", u.id(), v.id());
+                                    info!("Keeping {} -> {}", u.id(), v.id());
                                     _delete = false;
                                     break;
                                 }
@@ -102,6 +141,7 @@ where H: Hypergraph<'a> + Typed<'a> + LPredicate<'a> + ContainedHyperedge<'a> {
                         }
                     }
                     if _delete {
+                        info!("Deleting {} -> {}", u.id(), v.id());
                         need_delete.push(v.clone());
                     }
                 }
