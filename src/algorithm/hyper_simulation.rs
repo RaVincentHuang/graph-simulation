@@ -69,11 +69,15 @@ where H: Hypergraph<'a> + Typed<'a> + LPredicate<'a> + ContainedHyperedge<'a> {
             (u, res)
         }).collect();
 
-        let mut changed = false;
-        while !changed {
+        println!("END Initial");
+
+        let mut changed = true;
+        while changed {
+            changed = false;
             for u in self.nodes() {
                 let mut need_delete = Vec::new();
                 for v in simulation.get(u).unwrap() {
+                    println!("Checking {} -> {}", u.id(), v.id());
                     let mut _delete = true;
                     for e in self.contained_hyperedges(&self_contained_hyperedge, u) {
                         if !_delete {
@@ -90,6 +94,7 @@ where H: Hypergraph<'a> + Typed<'a> + LPredicate<'a> + ContainedHyperedge<'a> {
                                         }
                                     })
                                 }) {
+                                    println!("Keeping {} -> {}", u.id(), v.id());
                                     _delete = false;
                                     break;
                                 }
