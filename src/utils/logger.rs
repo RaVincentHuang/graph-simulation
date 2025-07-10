@@ -1,5 +1,6 @@
-use std::{io, fs::File, sync::{OnceLock, Mutex}};
+use std::{env, fs::File, io, sync::{Mutex, OnceLock}};
 use env_logger::Target;
+use log::LevelFilter;
 
 // 1. 定义日志写入器（支持文件+控制台双输出）
 struct MultiWriter {
@@ -38,9 +39,23 @@ pub fn init_global_logger_once(output_file: &'static str) {
             stdout: io::stdout(),
         };
 
+        let level = if let Ok(level) = env::var("RUST_LOG") {
+            match level.to_lowercase().as_str() {
+                "error" => LevelFilter::Error,
+                "warn" | "warning" => LevelFilter::Warn,
+                "info" => LevelFilter::Info,
+                "debug" => LevelFilter::Debug,
+                "trace" => LevelFilter::Trace,
+                _ => LevelFilter::Info, // 默认级别
+            }
+        } else {
+            LevelFilter::Info
+        };// 默认级别
+
         // 配置并初始化env_logger
         env_logger::Builder::new()
             .target(Target::Pipe(Box::new(multi_writer)))
+            .filter_level(level)
             .init();
 
         log::info!("Logger initialized successfully");
