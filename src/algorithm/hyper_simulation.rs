@@ -20,6 +20,16 @@ pub struct SematicCluster<'a, E: Hyperedge> {
     hyperedges: Vec<&'a E>,
 }
 
+impl<'a, E: Hyperedge> SematicCluster<'a, E> {
+    pub fn id(&self) -> usize {
+        self.id
+    }
+
+    pub fn hyperedges(&self) -> &Vec<&'a E> {
+        &self.hyperedges
+    }
+}
+
 pub trait Delta<'a> {
     type Node;
     type Edge: Hyperedge;
