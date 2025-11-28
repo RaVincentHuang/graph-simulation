@@ -22,6 +22,13 @@ pub struct SematicCluster<'a, E: Hyperedge> {
 
 impl<'a, E: Hyperedge> SematicCluster<'a, E> {
 
+    pub fn new(id: usize, hyperedges: Vec<&'a E>) -> Self {
+        Self {
+            id,
+            hyperedges,
+        }
+    }
+
     pub fn id(&self) -> usize {
         self.id
     }
