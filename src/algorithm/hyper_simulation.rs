@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use log::{info, warn};
 // use std::fs::File;
 // use std::io::{self, Write};
-use crate::utils::logger::init_global_logger_once;
+use crate::{algorithm::simulation, utils::logger::init_global_logger_once};
 
 use graph_base::interfaces::{edge::{DirectedHyperedge, Hyperedge}, graph::SingleId, hypergraph::{ContainedDirectedHyperedge, ContainedHyperedge, DirectedHypergraph, Hypergraph}, typed::{Type, Typed}};
 
@@ -13,6 +13,24 @@ pub trait LMatch {
     fn l_match_with_node_mut(&mut self, e: &Self::Edge, e_prime: &Self::Edge, u: usize) -> &HashSet<usize>;
     fn l_match_with_node(&self, e: &Self::Edge, e_prime: &Self::Edge, u: usize) -> &HashSet<usize>;
     fn dom(&self, e: &Self::Edge, e_prime: &Self::Edge) -> impl Iterator<Item = &usize>;
+}
+
+pub struct SematicCluster<'a, E: Hyperedge> {
+    id: usize,
+    hyperedges: Vec<&'a E>,
+}
+
+pub trait Delta<'a> {
+    type Node;
+    type Edge: Hyperedge;
+    fn get_sematic_clusters(&self, u: &'a Self::Node, v: &'a Self::Node) -> &'a Vec<(SematicCluster<'a, Self::Edge>, SematicCluster<'a, Self::Edge>)>;
+}
+
+pub trait DMatch<'a> {
+    type Edge: Hyperedge;
+    fn new() -> Self;
+    fn d_match_mut(&mut self, e: &SematicCluster<'a, Self::Edge>, e_prime: &SematicCluster<'a, Self::Edge>) -> &HashSet<(usize, usize)>;
+    fn d_match(&self, e: &SematicCluster<'a, Self::Edge>, e_prime: &SematicCluster<'a, Self::Edge>) -> &HashSet<(usize, usize)>;
 }
 
 pub trait LPredicate<'a>: Hypergraph<'a> {
@@ -27,6 +45,7 @@ pub trait HyperSimulation<'a>: Hypergraph<'a> {
     fn get_simulation_recursive(&'a self, other: &'a Self, l_match: &mut impl LMatch<Edge = Self::Edge>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
     fn get_simulation_naive(&'a self, other: &'a Self, l_match: &mut impl LMatch<Edge = Self::Edge>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
     fn get_soft_simulation_naive(&'a self, other: &'a Self, l_match: &mut impl LMatch<Edge = Self::Edge>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
+    fn get_hyper_simulation_naive(&'a self, other: &'a Self, delta: &impl Delta<'a, Node = Self::Node, Edge = Self::Edge>, d_match: &mut impl DMatch<'a, Edge = Self::Edge>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
 }
 
 // struct MultiWriter<W1: Write, W2: Write> {
@@ -77,7 +96,7 @@ where H: Hypergraph<'a> + Typed<'a> + LPredicate<'a> + ContainedHyperedge<'a> {
         let self_contained_hyperedge = self.get_hyperedges_list();
         let other_contained_hyperedge = other.get_hyperedges_list();
 
-        let mut simulation: HashMap<&'a Self::Node, HashSet<&'a Self::Node>> = self.nodes().map(|u| {
+        let mut simulation: HashMap<&Self::Node, HashSet<&Self::Node>> = self.nodes().map(|u| {
             let res = other.nodes().filter(|v| {
                 if self.type_same(u, *v) {
                     // For each e, compute the union of l_match(u) over all matching e_prime,
@@ -249,76 +268,70 @@ where H: Hypergraph<'a> + Typed<'a> + LPredicate<'a> + ContainedHyperedge<'a> {
         simulation
 
     }
+
+    fn get_hyper_simulation_naive(&'a self, other: &'a Self, delta: &impl Delta<'a, Node = Self::Node, Edge = Self::Edge>, d_match: &mut impl DMatch<'a, Edge = Self::Edge>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>> {
+        init_global_logger_once("hyper-simulation.log");
+
+        let mut simulation: HashMap<&'a Self::Node, HashSet<&'a Self::Node>> = self.nodes().map(|u| {
+            let res = other.nodes().filter(|v| {
+                if self.type_same(u, *v) {
+                    let sematic_clusters = delta.get_sematic_clusters(u, v);
+                    for (cluster_u, cluster_v) in sematic_clusters {
+                        let d_match_set = d_match.d_match_mut(cluster_u, cluster_v);
+                        if !d_match_set.contains(&(u.id(), v.id())) {
+                            return false;
+                        }
+                    }
+                    return true;
+                }
+                false
+            }).collect();
+            (u, res)
+        }).collect();
+
+        info!("END Initial, sim: is ");
+        for (u, v_set) in &simulation {
+            info!("\tsim({}) = {:?}", u.id(), v_set.iter().map(|v| v.id()).collect::<Vec<_>>());
+        }
+
+        let mut simulation_by_id: HashSet<(usize, usize)> = simulation.iter().flat_map(|(u, v_set)| {
+            v_set.iter().map(move |v| (u.id(), v.id()))
+        }).collect();
+
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for u in self.nodes() {
+                let mut need_delete = Vec::new();
+                for v in simulation.get(u).unwrap() {
+                    info!("Checking {} -> {}", u.id(), v.id());
+                    let mut _delete = false;
+
+                    let sematic_clusters = delta.get_sematic_clusters(u, v);
+                    for (cluster_u, cluster_v) in sematic_clusters {
+                        let d_relation = d_match.d_match(cluster_u, cluster_v);
+                        // Check if for all (u_id, v_id) in d_relation, (u_id, v_id) is in simulation, i.e., d_relation is a subset of simulation_by_id
+                        if !d_relation.is_subset(&simulation_by_id) {
+                            info!("Keeping {} -> {}", u.id(), v.id());
+                            _delete = true;
+                            break;
+                        }
+                    }
+
+                    if _delete {
+                        info!("Deleting {} -> {}", u.id(), v.id());
+                        need_delete.push(v.clone());
+                    }
+                }
+
+                for v in need_delete {
+                    simulation.get_mut(u).unwrap().remove(v);
+                    simulation_by_id.remove(&(u.id(), v.id()));
+                    changed = true;
+                }
+            }
+        }
+
+        return simulation;
+    }
 }
-
-// pub trait DiHyperSimulation<'a> {
-//     type Node;
-
-//     fn get_simulation_fixpoint(&'a self, other: &'a Self) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
-//     fn get_simulation_recursive(&'a self, other: &'a Self) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
-//     fn get_simulation_native(&'a self, other: &'a Self) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
-// }
-
-// impl<'a, H> DiHyperSimulation<'a> for H 
-// where 
-//     H: DirectedHypergraph<'a> + Typed<'a> + LMatch<'a> + LPredicate<'a> + ContainedDirectedHyperedge<'a>,
-//     H::Node: Type, H::Edge: DirectedHyperedge {
-//     type Node = H::Node;
-
-//     fn get_simulation_fixpoint(&'a self, other: &'a Self) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>> {
-//         todo!()
-//     }
-
-//     fn get_simulation_recursive(&'a self, other: &'a Self) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>> {
-//         todo!()
-//     }
-
-//     fn get_simulation_native(&'a self, other: &'a Self) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>> {
-//         // let mut simulation: HashMap<&'a Self::Node, HashSet<&'a Self::Node>> = self.nodes().map(|u| {
-//         //     let res = other.nodes().filter(|v| {
-//         //         self.type_same(u, *v)
-//         //     }).collect();
-//         //     (u, res)
-//         // }).collect();
-
-//         // let self_contained_hyperedge = self.get_hyperedges_src();
-//         // let other_contained_hyperedge = other.get_hyperedges_src();
-
-//         // let mut changed = false;
-//         // while !changed {
-//         //     for u in self.nodes() {
-//         //         let mut need_delete = Vec::new();
-//         //         for v in simulation.get(u).unwrap() {
-//         //             let mut _delete = true;
-//         //             for e in self.contained_hyperedges(&self_contained_hyperedge, u) {
-//         //                 if !_delete {
-//         //                     break;
-//         //                 }
-//         //                 for e_prime in other.contained_hyperedges(&other_contained_hyperedge, v) {
-//         //                     if self.l_predicate_edge(e, e_prime) {
-//         //                         let l_match = self.l_match(e, e_prime);
-//         //                         if l_match(u).id() == v.id() 
-//         //                             && self.dom(l_match).all(|u_prime| {
-//         //                                 simulation.get(u).unwrap().contains(&u_prime)
-//         //                         }) {
-//         //                             _delete = false;
-//         //                             break;
-//         //                         }
-//         //                     }
-//         //                 }
-//         //             }
-//         //             if _delete {
-//         //                 need_delete.push(v.clone());
-//         //             }
-//         //         }
-//         //         for v in need_delete {
-//         //             simulation.get_mut(u).unwrap().remove(v);
-//         //             changed = true;
-//         //         }
-//         //     }
-//         // }
-
-//         // simulation
-//         todo!()
-//     }
-// }
