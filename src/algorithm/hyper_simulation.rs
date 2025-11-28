@@ -54,7 +54,7 @@ pub trait HyperSimulation<'a>: Hypergraph<'a> {
     fn get_simulation_recursive(&'a self, other: &'a Self, l_match: &mut impl LMatch<Edge = Self::Edge>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
     fn get_simulation_naive(&'a self, other: &'a Self, l_match: &mut impl LMatch<Edge = Self::Edge>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
     fn get_soft_simulation_naive(&'a self, other: &'a Self, l_match: &mut impl LMatch<Edge = Self::Edge>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
-    fn get_hyper_simulation_naive(&'a self, other: &'a Self, delta: &impl Delta<'a, Node = Self::Node, Edge = Self::Edge>, d_match: &mut impl DMatch<'a, Edge = Self::Edge>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
+    fn get_hyper_simulation_naive(&'a self, other: &'a Self, delta: &'a impl Delta<'a, Node = Self::Node, Edge = Self::Edge>, d_match: &mut impl DMatch<'a, Edge = Self::Edge>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
 }
 
 // struct MultiWriter<W1: Write, W2: Write> {
@@ -278,7 +278,7 @@ where H: Hypergraph<'a> + Typed<'a> + LPredicate<'a> + ContainedHyperedge<'a> {
 
     }
 
-    fn get_hyper_simulation_naive(&'a self, other: &'a Self, delta: &impl Delta<'a, Node = Self::Node, Edge = Self::Edge>, d_match: &mut impl DMatch<'a, Edge = Self::Edge>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>> {
+    fn get_hyper_simulation_naive(&'a self, other: &'a Self, delta: &'a impl Delta<'a, Node = Self::Node, Edge = Self::Edge>, d_match: &mut impl DMatch<'a, Edge = Self::Edge>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>> {
         init_global_logger_once("hyper-simulation.log");
 
         let mut simulation: HashMap<&'a Self::Node, HashSet<&'a Self::Node>> = self.nodes().map(|u| {
