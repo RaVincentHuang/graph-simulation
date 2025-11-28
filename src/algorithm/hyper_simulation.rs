@@ -21,6 +21,7 @@ pub struct SematicCluster<'a, E: Hyperedge> {
 }
 
 impl<'a, E: Hyperedge> SematicCluster<'a, E> {
+
     pub fn id(&self) -> usize {
         self.id
     }
@@ -33,12 +34,12 @@ impl<'a, E: Hyperedge> SematicCluster<'a, E> {
 pub trait Delta<'a> {
     type Node;
     type Edge: Hyperedge;
-    fn get_sematic_clusters(&self, u: &'a Self::Node, v: &'a Self::Node) -> &'a Vec<(SematicCluster<'a, Self::Edge>, SematicCluster<'a, Self::Edge>)>;
+    fn get_sematic_clusters(&'a self, u: &'a Self::Node, v: &'a Self::Node) -> &'a Vec<(SematicCluster<'a, Self::Edge>, SematicCluster<'a, Self::Edge>)>;
 }
 
 pub trait DMatch<'a> {
     type Edge: Hyperedge;
-    fn d_match_mut(&mut self, e: &SematicCluster<'a, Self::Edge>, e_prime: &SematicCluster<'a, Self::Edge>) -> &HashSet<(usize, usize)>;
+    // fn d_match_mut(&mut self, e: &SematicCluster<'a, Self::Edge>, e_prime: &SematicCluster<'a, Self::Edge>) -> &HashSet<(usize, usize)>;
     fn d_match(&self, e: &SematicCluster<'a, Self::Edge>, e_prime: &SematicCluster<'a, Self::Edge>) -> &HashSet<(usize, usize)>;
 }
 
@@ -115,7 +116,7 @@ where H: Hypergraph<'a> + Typed<'a> + LPredicate<'a> + ContainedHyperedge<'a> {
                         for e_prime in other.contained_hyperedges(&other_contained_hyperedge, v) {
                             if self.l_predicate_edge(e, e_prime) {
                                 // let l_match = self.l_match(e, e_prime);
-                                let id_set = l_match.l_match_with_node_mut(e, e_prime, u.id());
+                                let id_set = l_match.l_match_with_node(e, e_prime, u.id());
                                 l_match_union = l_match_union.union(&id_set).copied().collect();
                             }
                         }
@@ -285,7 +286,7 @@ where H: Hypergraph<'a> + Typed<'a> + LPredicate<'a> + ContainedHyperedge<'a> {
                 if self.type_same(u, *v) {
                     let sematic_clusters = delta.get_sematic_clusters(u, v);
                     for (cluster_u, cluster_v) in sematic_clusters {
-                        let d_match_set = d_match.d_match_mut(cluster_u, cluster_v);
+                        let d_match_set = d_match.d_match(cluster_u, cluster_v);
                         if !d_match_set.contains(&(u.id(), v.id())) {
                             return false;
                         }
