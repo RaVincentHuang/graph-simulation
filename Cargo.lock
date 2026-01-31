@@ -300,7 +300,7 @@ dependencies = [
 
 [[package]]
 name = "graph-simulation"
-version = "0.1.21"
+version = "0.1.22"
 dependencies = [
  "bincode",
  "criterion",

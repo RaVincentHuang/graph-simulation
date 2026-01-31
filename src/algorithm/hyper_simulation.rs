@@ -52,7 +52,6 @@ pub trait Delta<'a> {
     type Node;
     type Edge: Hyperedge;
     fn get_sematic_clusters(&'a self, u: &'a Self::Node, v: &'a Self::Node) -> &'a Vec<(SematicCluster<'a, Self::Edge>, SematicCluster<'a, Self::Edge>)>;
-    fn get_sematic_clusters_by_edge_id(&'a self, u: &'a Self::Node, v: &'a Self::Node) -> &'a Vec<(SematicCluster<'a, Self::Edge>, SematicCluster<'a, Self::Edge>)>;
 }
 
 pub trait DMatch<'a> {
