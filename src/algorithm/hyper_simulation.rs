@@ -369,7 +369,7 @@ where H: Hypergraph<'a> + Typed<'a> + LPredicate<'a> + ContainedHyperedge<'a> {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
-struct HyperSimulationTrace {
+pub struct HyperSimulationTrace {
     events: Vec<HSEvent>
 }
 
