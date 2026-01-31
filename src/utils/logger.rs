@@ -1,7 +1,7 @@
-use std::{env, fs::File, io, sync::{Mutex, OnceLock}};
+use std::{env, error::Error, fs::File, io, sync::{Mutex, OnceLock}};
 use env_logger::Target;
 use log::LevelFilter;
-
+use serde::{Serialize, Deserialize};
 // 1. 定义日志写入器（支持文件+控制台双输出）
 struct MultiWriter {
     file: Mutex<File>,
@@ -60,4 +60,9 @@ pub fn init_global_logger_once(output_file: &'static str) {
 
         log::info!("Logger initialized successfully");
     });
+}
+
+pub trait TraceLog: Serialize +  for<'de> Deserialize<'de> {
+    fn store_trace_file(self, filename: &'static str) -> Result<(), Box<dyn Error>>;
+    fn get_trace(filename: &'static str) -> Result<Self, Box<dyn Error>>;
 }

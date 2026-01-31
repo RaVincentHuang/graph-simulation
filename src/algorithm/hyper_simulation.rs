@@ -2,9 +2,18 @@ use std::collections::{HashMap, HashSet};
 use log::{info, warn};
 // use std::fs::File;
 // use std::io::{self, Write};
-use crate::{algorithm::simulation, utils::logger::init_global_logger_once};
+
+
+use serde::{Serialize, Deserialize};
+use std::fs::File;
+use std::io::{BufReader, BufWriter};
+use std::error::Error;
+
 
 use graph_base::interfaces::{edge::{DirectedHyperedge, Hyperedge}, graph::SingleId, hypergraph::{ContainedDirectedHyperedge, ContainedHyperedge, DirectedHypergraph, Hypergraph}, typed::{Type, Typed}};
+
+use crate::{algorithm::simulation, utils::logger::init_global_logger_once};
+use crate::utils::logger::TraceLog;
 
 pub trait LMatch {
     type Edge;
@@ -15,6 +24,7 @@ pub trait LMatch {
     fn dom(&self, e: &Self::Edge, e_prime: &Self::Edge) -> impl Iterator<Item = &usize>;
 }
 
+#[derive(Hash)]
 pub struct SematicCluster<'a, E: Hyperedge> {
     id: usize,
     hyperedges: Vec<&'a E>,
@@ -42,6 +52,7 @@ pub trait Delta<'a> {
     type Node;
     type Edge: Hyperedge;
     fn get_sematic_clusters(&'a self, u: &'a Self::Node, v: &'a Self::Node) -> &'a Vec<(SematicCluster<'a, Self::Edge>, SematicCluster<'a, Self::Edge>)>;
+    fn get_sematic_clusters_by_edge_id(&'a self, u: &'a Self::Node, v: &'a Self::Node) -> &'a Vec<(SematicCluster<'a, Self::Edge>, SematicCluster<'a, Self::Edge>)>;
 }
 
 pub trait DMatch<'a> {
@@ -287,7 +298,7 @@ where H: Hypergraph<'a> + Typed<'a> + LPredicate<'a> + ContainedHyperedge<'a> {
 
     fn get_hyper_simulation_naive(&'a self, other: &'a Self, delta: &'a impl Delta<'a, Node = Self::Node, Edge = Self::Edge>, d_match: & impl DMatch<'a, Edge = Self::Edge>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>> {
         init_global_logger_once("hyper-simulation.log");
-
+        let mut hs_trace = HyperSimulationTrace::new();
         let mut simulation: HashMap<&'a Self::Node, HashSet<&'a Self::Node>> = self.nodes().map(|u| {
             let res = other.nodes().filter(|v| {
                 if self.type_same(u, *v) {
@@ -295,6 +306,8 @@ where H: Hypergraph<'a> + Typed<'a> + LPredicate<'a> + ContainedHyperedge<'a> {
                     for (cluster_u, cluster_v) in sematic_clusters {
                         let d_match_set = d_match.d_match(cluster_u, cluster_v);
                         if !d_match_set.contains(&(u.id(), v.id())) {
+                            // Add the trace that nodes (u, v) are deleted by the `sematic_clusters`
+                            hs_trace.add_base_event(cluster_u.id, d_match_set.clone());
                             return false;
                         }
                     }
@@ -328,14 +341,16 @@ where H: Hypergraph<'a> + Typed<'a> + LPredicate<'a> + ContainedHyperedge<'a> {
                         let d_relation = d_match.d_match(cluster_u, cluster_v);
                         // Check if for all (u_id, v_id) in d_relation, (u_id, v_id) is in simulation, i.e., d_relation is a subset of simulation_by_id
                         if !d_relation.is_subset(&simulation_by_id) {
-                            info!("Keeping {} -> {}", u.id(), v.id());
+                            info!("Deleting {} -> {}", u.id(), v.id());
+                            // Add the trace that nodes (u, v) are deleted by the `sematic_clusters`
+                            let uncoverd: HashSet<(usize, usize)> = d_relation.difference(&simulation_by_id).copied().collect();
+                            hs_trace.add_derivation_event(cluster_u.id, uncoverd);
                             _delete = true;
                             break;
                         }
                     }
 
                     if _delete {
-                        info!("Deleting {} -> {}", u.id(), v.id());
                         need_delete.push(v.clone());
                     }
                 }
@@ -348,6 +363,54 @@ where H: Hypergraph<'a> + Typed<'a> + LPredicate<'a> + ContainedHyperedge<'a> {
             }
         }
 
+        hs_trace.store_trace_file("hyper_simulation.trace").unwrap();
+
         return simulation;
     }
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+struct HyperSimulationTrace {
+    events: Vec<HSEvent>
+}
+
+impl HyperSimulationTrace {
+    fn new() -> Self {
+        HyperSimulationTrace {
+            events: Vec::new()
+        }
+    }
+
+    fn add_base_event(&mut self, sc_id: usize, d_match: HashSet<(usize, usize)>) {
+        let event = HSEvent::Base(sc_id, d_match);
+        self.events.push(event);
+    }
+    fn add_derivation_event(&mut self, sc_id: usize, uncoverd: HashSet<(usize, usize)>) {
+        let event = HSEvent::Derivation(sc_id, uncoverd);
+        self.events.push(event);
+    }
+}
+
+impl TraceLog for HyperSimulationTrace {
+    fn store_trace_file(self, filename: &'static str) -> Result<(), Box<dyn Error>> {
+        // use bincode to save the HyperSimulationTrace.
+        let file = File::create(filename)?;
+        let mut writer = BufWriter::new(file);
+        bincode::serialize_into(&mut writer, &self)?;
+        Ok(())
+    }
+    
+    fn get_trace(filename: &'static str) -> Result<Self, Box<dyn Error>> {
+        let file = File::open(filename)?;
+        let mut reader = BufReader::new(file);
+        let file_decoded: HyperSimulationTrace = bincode::deserialize_from(&mut reader)?;
+        Ok(file_decoded)
+    }
+
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+enum HSEvent {
+    Base(usize, HashSet<(usize, usize)>), // current D-Match
+    Derivation(usize, HashSet<(usize, usize)>) // D-Match \ Sim
 }

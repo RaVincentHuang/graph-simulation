@@ -1,37 +1,9 @@
-graphs iso_15 is isomorphic
-sim1:
-[id: 0, label: 2] -> {[id: 3, label: 2], }
-[id: 7, label: 2] -> {[id: 3, label: 2], }
-[id: 2, label: 4] -> {}
-[id: 1, label: 1] -> {}
-[id: 8, label: 3] -> {}
-[id: 11, label: 4] -> {}
-[id: 6, label: 2] -> {[id: 3, label: 2], }
-[id: 12, label: 1] -> {}
-[id: 13, label: 4] -> {}
-[id: 4, label: 2] -> {[id: 4, label: 2], [id: 0, label: 2], [id: 5, label: 2], [id: 6, label: 2], }
-[id: 5, label: 2] -> {[id: 3, label: 2], }
-[id: 3, label: 4] -> {}
-[id: 9, label: 1] -> {}
-[id: 10, label: 4] -> {}
-sim2:
-[id: 1, label: 1] -> {[id: 9, label: 1], }
-[id: 9, label: 1] -> {[id: 8, label: 1], }
-[id: 3, label: 4] -> {[id: 1, label: 4], }
-[id: 8, label: 3] -> {[id: 2, label: 3], }
-[id: 7, label: 2] -> {[id: 4, label: 2], }
-[id: 11, label: 4] -> {[id: 7, label: 4], }
-[id: 12, label: 1] -> {[id: 10, label: 1], }
-[id: 13, label: 4] -> {[id: 11, label: 4], }
-[id: 2, label: 4] -> {[id: 13, label: 4], }
-[id: 6, label: 2] -> {[id: 5, label: 2], }
-[id: 10, label: 4] -> {[id: 12, label: 4], }
-[id: 4, label: 2] -> {[id: 6, label: 2], [id: 4, label: 2], [id: 3, label: 2], [id: 0, label: 2], [id: 5, label: 2], }
-[id: 0, label: 2] -> {[id: 6, label: 2], }
-[id: 5, label: 2] -> {[id: 0, label: 2], }
-graph1:
-nodes: [id: 0, label: 2], [id: 1, label: 1], [id: 2, label: 4], [id: 3, label: 4], [id: 4, label: 2], [id: 5, label: 2], [id: 6, label: 2], [id: 7, label: 2], [id: 8, label: 3], [id: 9, label: 1], [id: 10, label: 4], [id: 11, label: 4], [id: 12, label: 1], [id: 13, label: 4],
-edges: 0 -> 1, 0 -> 3, 0 -> 4, 0 -> 10, 0 -> 11, 1 -> 2, 1 -> 12, 2 -> 8, 2 -> 13, 3 -> 6, 3 -> 10, 3 -> 0, 5 -> 8, 5 -> 11, 5 -> 4, 6 -> 7, 6 -> 0, 6 -> 1, 6 -> 3, 6 -> 4, 7 -> 12, 7 -> 0, 7 -> 5, 7 -> 6, 8 -> 10, 8 -> 3, 8 -> 5, 8 -> 7, 9 -> 13, 9 -> 2, 9 -> 3, 10 -> 1, 10 -> 7, 10 -> 8, 11 -> 13, 11 -> 2, 11 -> 3, 11 -> 9, 12 -> 0, 12 -> 1, 12 -> 2, 12 -> 3, 12 -> 9, 13 -> 8, 13 -> 10, 13 -> 11, 13 -> 12,
-graph2:
-nodes: [id: 6, label: 2], [id: 9, label: 1], [id: 13, label: 4], [id: 1, label: 4], [id: 3, label: 2], [id: 0, label: 2], [id: 5, label: 2], [id: 4, label: 2], [id: 2, label: 3], [id: 8, label: 1], [id: 12, label: 4], [id: 7, label: 4], [id: 10, label: 1], [id: 11, label: 4],
-edges: 6 -> 9, 6 -> 1, 6 -> 3, 6 -> 12, 6 -> 7, 9 -> 13, 9 -> 10, 13 -> 2, 13 -> 11, 1 -> 5, 1 -> 12, 1 -> 6, 0 -> 2, 0 -> 7, 0 -> 3, 5 -> 4, 5 -> 6, 5 -> 9, 5 -> 1, 5 -> 3, 4 -> 10, 4 -> 6, 4 -> 0, 4 -> 5, 2 -> 12, 2 -> 1, 2 -> 0, 2 -> 4, 8 -> 11, 8 -> 13, 8 -> 1, 12 -> 9, 12 -> 4, 12 -> 2, 7 -> 11, 7 -> 13, 7 -> 1, 7 -> 8, 10 -> 6, 10 -> 9, 10 -> 13, 10 -> 1, 10 -> 8, 11 -> 2, 11 -> 12, 11 -> 7, 11 -> 10,
+while (there exists a node u ∈ V_self with premv(u) != ∅) do 
+    for (each (u′, u) ∈ E_self and each z ∈ premv(u) ∩ sim(u′)) do 
+        sim(u′) := sim(u′) \ {z};  
+        if (sim(u′) = ∅) then return ∅; 
+            for each u′′ with (u′′, u′) ∈ Ep do 
+                for (z′ ∈ anc(get_bound(u′′, u′), u′′, z) ∧ z′ ∈/ premv(u′)) do 
+                    if (dec(get_bound(u′′, u′), u′, z′) ∩ sim(u′) = ∅) 
+                        then premv(u′) := premv(u′) ∪ {z′}; 
+    premv(u) := ∅;
