@@ -390,6 +390,24 @@ impl HyperSimulationTrace {
     }
 }
 
+impl IntoIterator for HyperSimulationTrace {
+    type Item = HSEvent;
+    type IntoIter = std::vec::IntoIter<HSEvent>;
+    
+    fn into_iter(self) -> Self::IntoIter {
+        self.events.into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a HyperSimulationTrace {
+    type Item = &'a HSEvent;
+    type IntoIter = std::slice::Iter<'a, HSEvent>;
+    
+    fn into_iter(self) -> Self::IntoIter {
+        self.events.iter()
+    }
+}
+
 impl TraceLog for HyperSimulationTrace {
     fn store_trace_file(self, filename: &'static str) -> Result<(), Box<dyn Error>> {
         // use bincode to save the HyperSimulationTrace.
@@ -405,11 +423,10 @@ impl TraceLog for HyperSimulationTrace {
         let file_decoded: HyperSimulationTrace = bincode::deserialize_from(&mut reader)?;
         Ok(file_decoded)
     }
-
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
-enum HSEvent {
+pub enum HSEvent {
     Base(usize, HashSet<(usize, usize)>), // current D-Match
     Derivation(usize, HashSet<(usize, usize)>) // D-Match \ Sim
 }
