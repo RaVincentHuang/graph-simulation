@@ -72,8 +72,8 @@ pub trait HyperSimulation<'a>: Hypergraph<'a> {
     fn get_simulation_naive(&'a self, other: &'a Self, l_match: &mut impl LMatch<Edge = Self::Edge>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
     fn get_soft_simulation_naive(&'a self, other: &'a Self, l_match: &mut impl LMatch<Edge = Self::Edge>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
     fn get_hyper_simulation_naive(&'a self, other: &'a Self, delta: &'a impl Delta<'a, Node = Self::Node, Edge = Self::Edge>, d_match: & impl DMatch<'a, Edge = Self::Edge>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
+    fn get_hyper_simulation_strict(&'a self, other: &'a Self, delta: &'a impl Delta<'a, Node = Self::Node, Edge = Self::Edge>, d_match: & impl DMatch<'a, Edge = Self::Edge>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
 }
-
 // struct MultiWriter<W1: Write, W2: Write> {
 //     w1: W1,
 //     w2: W2,
@@ -296,7 +296,7 @@ where H: Hypergraph<'a> + Typed<'a> + LPredicate<'a> + ContainedHyperedge<'a> {
     }
 
     fn get_hyper_simulation_naive(&'a self, other: &'a Self, delta: &'a impl Delta<'a, Node = Self::Node, Edge = Self::Edge>, d_match: & impl DMatch<'a, Edge = Self::Edge>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>> {
-        init_global_logger_once("hyper-simulation.log");
+        init_global_logger_once("logs/hyper-simulation.log");
         let mut hs_trace = HyperSimulationTrace::new();
         let mut simulation: HashMap<&'a Self::Node, HashSet<&'a Self::Node>> = self.nodes().map(|u| {
             let res = other.nodes().filter(|v| {
@@ -317,7 +317,7 @@ where H: Hypergraph<'a> + Typed<'a> + LPredicate<'a> + ContainedHyperedge<'a> {
             (u, res)
         }).collect();
 
-        info!("END Initial, sim: is ");
+        info!("END Initial, raw-sim: is ");
         for (u, v_set) in &simulation {
             info!("\tsim({}) = {:?}", u.id(), v_set.iter().map(|v| v.id()).collect::<Vec<_>>());
         }
@@ -362,7 +362,83 @@ where H: Hypergraph<'a> + Typed<'a> + LPredicate<'a> + ContainedHyperedge<'a> {
             }
         }
 
-        hs_trace.store_trace_file("hyper_simulation.trace").unwrap();
+        hs_trace.store_trace_file("logs/hyper_simulation.trace").unwrap();
+
+        return simulation;
+    }
+
+    fn get_hyper_simulation_strict(&'a self, other: &'a Self, delta: &'a impl Delta<'a, Node = Self::Node, Edge = Self::Edge>, d_match: & impl DMatch<'a, Edge = Self::Edge>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>> {
+        init_global_logger_once("logs/hyper-simulation.log");
+        let mut hs_trace = HyperSimulationTrace::new();
+        let mut simulation: HashMap<&'a Self::Node, HashSet<&'a Self::Node>> = self.nodes().map(|u| {
+            let res = other.nodes().filter(|v| {
+                if self.type_same(u, *v) {
+                    let sematic_clusters = delta.get_sematic_clusters(u, v);
+                    // Highlight!
+                    if sematic_clusters.len() == 0 {
+                        return false;
+                    }
+                    for (cluster_u, cluster_v) in sematic_clusters {
+                        let d_match_set = d_match.d_match(cluster_u, cluster_v);
+                        if !d_match_set.contains(&(u.id(), v.id())) {
+                            // Add the trace that nodes (u, v) are deleted by the `sematic_clusters`
+                            hs_trace.add_base_event(cluster_u.id, d_match_set.clone());
+                            return false;
+                        }
+                    }
+                    return true;
+                }
+                false
+            }).collect();
+            (u, res)
+        }).collect();
+
+        info!("END Initial, raw-sim: is ");
+        for (u, v_set) in &simulation {
+            info!("\tsim({}) = {:?}", u.id(), v_set.iter().map(|v| v.id()).collect::<Vec<_>>());
+        }
+
+        let mut simulation_by_id: HashSet<(usize, usize)> = simulation.iter().flat_map(|(u, v_set)| {
+            v_set.iter().map(move |v| (u.id(), v.id()))
+        }).collect();
+
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for u in self.nodes() {
+                let mut need_delete = Vec::new();
+                for v in simulation.get(u).unwrap() {
+                    info!("Checking {} -> {}", u.id(), v.id());
+                    let mut _delete = false;
+
+                    let sematic_clusters = delta.get_sematic_clusters(u, v);
+                    for (cluster_u, cluster_v) in sematic_clusters {
+                        let d_relation = d_match.d_match(cluster_u, cluster_v);
+                        // Check if for all (u_id, v_id) in d_relation, (u_id, v_id) is in simulation, i.e., d_relation is a subset of simulation_by_id
+                        if !d_relation.is_subset(&simulation_by_id) {
+                            info!("Deleting {} -> {}", u.id(), v.id());
+                            // Add the trace that nodes (u, v) are deleted by the `sematic_clusters`
+                            let uncoverd: HashSet<(usize, usize)> = d_relation.difference(&simulation_by_id).copied().collect();
+                            hs_trace.add_derivation_event(cluster_u.id, uncoverd);
+                            _delete = true;
+                            break;
+                        }
+                    }
+
+                    if _delete {
+                        need_delete.push(v.clone());
+                    }
+                }
+
+                for v in need_delete {
+                    simulation.get_mut(u).unwrap().remove(v);
+                    simulation_by_id.remove(&(u.id(), v.id()));
+                    changed = true;
+                }
+            }
+        }
+
+        hs_trace.store_trace_file("logs/hyper_simulation.trace").unwrap();
 
         return simulation;
     }

@@ -5,7 +5,6 @@ use std::collections::{HashSet, HashMap};
 
 pub trait BoundedSimulation<'a> {
     type Node: 'a;
-
     fn get_bounded_simulation(&'a self, other: &'a Self) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
 }
 
