@@ -376,8 +376,10 @@ where H: Hypergraph<'a> + Typed<'a> + LPredicate<'a> + ContainedHyperedge<'a> {
                     let sematic_clusters = delta.get_sematic_clusters(u, v);
                     // Highlight!
                     if sematic_clusters.len() == 0 {
+                        info!("Deleting {} -> {} because no sematic cluster", u.id(), v.id());
                         return false;
                     }
+                    info!("Checking {} -> {}, sematic clusters size: {}", u.id(), v.id(), sematic_clusters.len());
                     for (cluster_u, cluster_v) in sematic_clusters {
                         let d_match_set = d_match.d_match(cluster_u, cluster_v);
                         if !d_match_set.contains(&(u.id(), v.id())) {
