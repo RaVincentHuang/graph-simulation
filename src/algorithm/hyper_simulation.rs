@@ -452,6 +452,9 @@ where H: Hypergraph<'a> + Typed<'a> + LPredicate<'a> + ContainedHyperedge<'a> {
         delta: &'a impl Delta<'a, Node = Self::Node, Edge = Self::Edge>,
         d_match: &impl DMatch<'a, Edge = Self::Edge>,
     ) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>> {
+
+        init_global_logger_once("logs/hyper-simulation.log");
+
         // 建立 ID 到节点的映射，方便最后构造返回结果
         let mut id_to_u: HashMap<usize, &'a Self::Node> = HashMap::new();
         let mut id_to_v: HashMap<usize, &'a Self::Node> = HashMap::new();
@@ -525,6 +528,8 @@ where H: Hypergraph<'a> + Typed<'a> + LPredicate<'a> + ContainedHyperedge<'a> {
             }
         }
 
+        info!("1. 初始化 Pi 并获取 HC 和 D-match");
+
         // 2. 初始化 V_C (Valid Clusters)
         let mut v_c: HashSet<(usize, usize)> = HashSet::new();
         for (c_pair, d_match_set) in &a_cluster_d_match {
@@ -533,6 +538,8 @@ where H: Hypergraph<'a> + Typed<'a> + LPredicate<'a> + ContainedHyperedge<'a> {
                 v_c.insert(*c_pair);
             }
         }
+
+        info!("2. 初始化 V_C (Valid Clusters)");
 
         // 3. 找出失效的 (u, v) 加入队列 Q
         let mut q: VecDeque<(usize, usize)> = VecDeque::new();
@@ -555,6 +562,8 @@ where H: Hypergraph<'a> + Typed<'a> + LPredicate<'a> + ContainedHyperedge<'a> {
             }
         }
         pi = pi_retained;
+
+        info!("3. 找出失效的 (u, v) 加入队列 Q");
 
         // ==========================================
         // Phase 2: Cascade deletions via the queue
@@ -580,6 +589,8 @@ where H: Hypergraph<'a> + Typed<'a> + LPredicate<'a> + ContainedHyperedge<'a> {
                 }
             }
         }
+
+        info!("结束了主调用");
 
         // ==========================================
         // Phase 3: Construct Output
