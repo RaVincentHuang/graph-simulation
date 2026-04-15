@@ -73,6 +73,7 @@ pub trait HyperSimulation<'a>: Hypergraph<'a> {
     fn get_soft_simulation_naive(&'a self, other: &'a Self, l_match: &mut impl LMatch<Edge = Self::Edge>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
     fn get_hyper_simulation_naive(&'a self, other: &'a Self, delta: &'a impl Delta<'a, Node = Self::Node, Edge = Self::Edge>, d_match: & impl DMatch<'a, Edge = Self::Edge>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
     fn get_hyper_simulation_effect(&'a self, other: &'a Self, delta: &'a impl Delta<'a, Node = Self::Node, Edge = Self::Edge>, d_match: & impl DMatch<'a, Edge = Self::Edge>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
+    fn get_hyper_simulation_effect_pass_by(&'a self, other: &'a Self, delta: &'a impl Delta<'a, Node = Self::Node, Edge = Self::Edge>, d_match: & impl DMatch<'a, Edge = Self::Edge>, type_same_lookup: &HashMap<&'a Self::Node, HashSet<&'a Self::Node>>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
     fn get_hyper_simulation_strict(&'a self, other: &'a Self, delta: &'a impl Delta<'a, Node = Self::Node, Edge = Self::Edge>, d_match: & impl DMatch<'a, Edge = Self::Edge>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
 }
 // struct MultiWriter<W1: Write, W2: Write> {
@@ -500,6 +501,170 @@ where H: Hypergraph<'a> + Typed<'a> + LPredicate<'a> + ContainedHyperedge<'a> {
                 }
             }
         }
+
+        info!("完成了 Pi 的初始化和 HC、D-match 的获取，Pi 大小: {}", pi.len());
+
+        // A_cluster 对应的 D-match 缓存，避免重复计算
+        let mut a_cluster_d_match: HashMap<(usize, usize), HashSet<(usize, usize)>> = HashMap::new();
+        
+        // 依赖索引构建:
+        // D_cluster[(Cu, Cv)] -> { (u, v) \in Pi } 
+        let mut d_cluster: HashMap<(usize, usize), HashSet<(usize, usize)>> = HashMap::new();
+        // D_pair[(u', v')] -> { (Cu, Cv) \in A_cluster }
+        let mut d_pair: HashMap<(usize, usize), HashSet<(usize, usize)>> = HashMap::new();
+
+        for (&(u_id, v_id), clusters) in &hc_map {
+            for ((cu_id, cv_id), d_match_set) in clusters {
+                let c_pair = (*cu_id, *cv_id);
+                
+                // 填充 D_cluster
+                d_cluster.entry(c_pair).or_default().insert((u_id, v_id));
+
+                // 如果这是第一次遇到这个簇对，填充 D_pair
+                if !a_cluster_d_match.contains_key(&c_pair) {
+                    a_cluster_d_match.insert(c_pair, d_match_set.clone());
+
+                    for &(up_id, vp_id) in d_match_set {
+                        d_pair.entry((up_id, vp_id)).or_default().insert(c_pair);
+                    }
+                }
+            }
+        }
+
+        info!("1. 初始化 Pi 并获取 HC 和 D-match");
+
+        // 2. 初始化 V_C (Valid Clusters)
+        let mut v_c: HashSet<(usize, usize)> = HashSet::new();
+        for (c_pair, d_match_set) in &a_cluster_d_match {
+            // 条件 2.b: D-match 的所有元素都必须在当前的 Pi 中
+            if d_match_set.is_subset(&pi) {
+                v_c.insert(*c_pair);
+            }
+        }
+
+        info!("2. 初始化 V_C (Valid Clusters)");
+
+        // 3. 找出失效的 (u, v) 加入队列 Q
+        let mut q: VecDeque<(usize, usize)> = VecDeque::new();
+        let mut pi_retained = pi.clone();
+
+        for &(u_id, v_id) in &pi {
+            let mut all_in_vc = true;
+            if let Some(clusters) = hc_map.get(&(u_id, v_id)) {
+                for (c_pair, _) in clusters {
+                    if !v_c.contains(c_pair) {
+                        all_in_vc = false;
+                        break;
+                    }
+                }
+            }
+
+            if !all_in_vc {
+                q.push_back((u_id, v_id));      // 加入 Worklist
+                pi_retained.remove(&(u_id, v_id)); // Pi = Pi \ Q
+            }
+        }
+        pi = pi_retained;
+
+        info!("3. 找出失效的 (u, v) 加入队列 Q");
+
+        // ==========================================
+        // Phase 2: Cascade deletions via the queue
+        // ==========================================
+        while let Some((up_id, vp_id)) = q.pop_front() {
+            // 获取所有依赖于已删除节点对 (u', v') 的簇对 (Cu, Cv)
+            if let Some(dependent_clusters) = d_pair.get(&(up_id, vp_id)) {
+                for c_pair in dependent_clusters {
+                    // 如果簇对仍然被认为是有效的，现在它失效了
+                    if v_c.contains(c_pair) {
+                        v_c.remove(c_pair); // V_c = V_c \ {(Cu, Cv)}
+
+                        // 级联使依赖这个失效簇对的 (u, v) 失效
+                        if let Some(dependent_node_pairs) = d_cluster.get(c_pair) {
+                            for node_pair in dependent_node_pairs {
+                                if pi.contains(node_pair) {
+                                    pi.remove(node_pair);
+                                    q.push_back(*node_pair);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        info!("结束了主调用");
+
+        // ==========================================
+        // Phase 3: Construct Output
+        // ==========================================
+        // 将基于 ID 的关系还原为引用的 HashMap
+        let mut result: HashMap<&'a Self::Node, HashSet<&'a Self::Node>> = 
+            self.nodes().map(|u| (u, HashSet::new())).collect();
+
+        for (u_id, v_id) in pi {
+            // 由于我们事先在字典中存过映射，这里可以安全取值
+            let u_node = id_to_u[&u_id];
+            let v_node = id_to_v[&v_id];
+            if let Some(set) = result.get_mut(u_node) {
+                set.insert(v_node);
+            }
+        }
+
+        result
+    }
+
+    fn get_hyper_simulation_effect_pass_by(&'a self, _other: &'a Self, delta: &'a impl Delta<'a, Node = Self::Node, Edge = Self::Edge>, d_match: & impl DMatch<'a, Edge = Self::Edge>, type_same_lookup: &HashMap<&'a Self::Node, HashSet<&'a Self::Node>>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>> {
+        init_global_logger_once("logs/hyper-simulation.log");
+
+        // 建立 ID 到节点的映射，方便最后构造返回结果
+        let mut id_to_u: HashMap<usize, &'a Self::Node> = HashMap::new();
+        let mut id_to_v: HashMap<usize, &'a Self::Node> = HashMap::new();
+
+        // 存储节点对与其对应的所有的 Semantic Clusters (HC) 及 D-match 结果
+        let mut hc_map: HashMap<(usize, usize), Vec<((usize, usize), HashSet<(usize, usize)>)>> = HashMap::new();
+        
+        // Pi: 当前满足 Hyper Simulation 条件的 (u.id(), v.id()) 集合
+        let mut pi: HashSet<(usize, usize)> = HashSet::new();
+
+        // ==========================================
+        // Phase 1: Declarative Initialization
+        // ==========================================
+        
+        // 1. 初始化 Pi 并获取 HC 和 D-match
+        for u in self.nodes() {
+            id_to_u.insert(u.id(), u);
+
+            if let Some(type_same_vs) = type_same_lookup.get(u) {
+                for v in type_same_vs {
+                    id_to_v.insert(v.id(), v);
+
+                    let sematic_clusters = delta.get_sematic_clusters(u, v);
+                    let mut valid = true;
+                    let mut local_clusters = Vec::new();
+
+                    for (cluster_u, cluster_v) in sematic_clusters {
+                        let cu_id = cluster_u.id;
+                        let cv_id = cluster_v.id;
+                        let d_match_set = d_match.d_match(cluster_u, cluster_v);
+
+                        // 条件 2.a: (u, v) 必须在 D-match 中
+                        if !d_match_set.contains(&(u.id(), v.id())) {
+                            valid = false;
+                            break; // 只要有一个 cluster 失败，(u,v) 就不可能在 Pi 中
+                        }
+                        local_clusters.push(((cu_id, cv_id), d_match_set.clone()));
+                    }
+
+                    if valid {
+                        pi.insert((u.id(), v.id()));
+                        hc_map.insert((u.id(), v.id()), local_clusters);
+                    }
+                }
+            }
+        }
+
+        info!("完成了 Pi 的初始化和 HC、D-match 的获取，Pi 大小: {}", pi.len());
 
         // A_cluster 对应的 D-match 缓存，避免重复计算
         let mut a_cluster_d_match: HashMap<(usize, usize), HashSet<(usize, usize)>> = HashMap::new();
