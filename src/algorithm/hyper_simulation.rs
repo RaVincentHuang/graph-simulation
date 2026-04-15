@@ -74,6 +74,7 @@ pub trait HyperSimulation<'a>: Hypergraph<'a> {
     fn get_hyper_simulation_naive(&'a self, other: &'a Self, delta: &'a impl Delta<'a, Node = Self::Node, Edge = Self::Edge>, d_match: & impl DMatch<'a, Edge = Self::Edge>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
     fn get_hyper_simulation_effect(&'a self, other: &'a Self, delta: &'a impl Delta<'a, Node = Self::Node, Edge = Self::Edge>, d_match: & impl DMatch<'a, Edge = Self::Edge>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
     fn get_hyper_simulation_effect_pass_by(&'a self, other: &'a Self, delta: &'a impl Delta<'a, Node = Self::Node, Edge = Self::Edge>, d_match: & impl DMatch<'a, Edge = Self::Edge>, type_same_lookup: &HashMap<&'a Self::Node, HashSet<&'a Self::Node>>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
+    fn get_hyper_simulation_effect_by_id(&'a self, hc_map: &HashMap<(usize, usize), Vec<((usize, usize), HashSet<(usize, usize)>)>>) -> HashSet<(usize, usize)>;
     fn get_hyper_simulation_strict(&'a self, other: &'a Self, delta: &'a impl Delta<'a, Node = Self::Node, Edge = Self::Edge>, d_match: & impl DMatch<'a, Edge = Self::Edge>) -> HashMap<&'a Self::Node, HashSet<&'a Self::Node>>;
 }
 // struct MultiWriter<W1: Write, W2: Write> {
@@ -774,6 +775,146 @@ where H: Hypergraph<'a> + Typed<'a> + LPredicate<'a> + ContainedHyperedge<'a> {
         }
 
         result
+    }
+
+    fn get_hyper_simulation_effect_by_id(&'a self, hc_map: &HashMap<(usize, usize), Vec<((usize, usize), HashSet<(usize, usize)>)>>) -> HashSet<(usize, usize)> {
+        // ==========================================
+        // hc_map 参数说明：
+        // ==========================================
+        // hc_map 是一个预计算的语义集群和 D-match 关系映射表，用于完全在 ID 空间内执行 Hyper Simulation 计算。
+        // 
+        // 结构：HashMap<(u_id, v_id), Vec<((cu_id, cv_id), D_match_set)>>
+        // 
+        // 键 (u_id, v_id)：
+        //   - 候选节点对，其中 u_id 属于 self，v_id 属于 other
+        //   - 代表可能参加 Hyper Simulation 的节点对
+        // 
+        // 值 Vec<((cu_id, cv_id), D_match_set)>：
+        //   - 该节点对相关的所有语义集群及其 D-match 关系
+        //   - (cu_id, cv_id)：语义集群对的 ID（u 侧和 v 侧）
+        //   - D_match_set：HashSet<(usize, usize)>，该集群对的 D-match 结果
+        //     即满足 d_match(cluster_u, cluster_v) 的所有节点对 (u'_id, v'_id)
+        // 
+        // 调用前的准备步骤（由调用者负责）：
+        //   1. 计算 type_same 的两个图之间所有可兼容的节点对
+        //   2. 对每个节点对，调用 delta.get_sematic_clusters() 获取语义集群
+        //   3. 对每个集群对，调用 d_match.d_match() 计算 D-match 集合
+        //   4. 构建此 hc_map 并传入
+        //
+        // 函数内执行：
+        //   - 完全基于 ID-based 的数据结构，不涉及具体的节点类型
+        //   - 执行三个阶段：初始化、V_C 构建、级联删除
+        //   - 返回最终的 Hyper Simulation 结果集合
+        
+        init_global_logger_once("logs/hyper-simulation.log");
+
+        // Pi: 当前满足 Hyper Simulation 条件的 (u.id(), v.id()) 集合
+        let mut pi: HashSet<(usize, usize)> = HashSet::new();
+
+        // ==========================================
+        // Phase 1: Initialize Pi from hc_map
+        // ==========================================
+        for &(u_id, v_id) in hc_map.keys() {
+            pi.insert((u_id, v_id));
+        }
+
+        info!("完成了 Pi 的初始化和 HC、D-match 的获取，Pi 大小: {}", pi.len());
+
+        // A_cluster 对应的 D-match 缓存，避免重复计算
+        let mut a_cluster_d_match: HashMap<(usize, usize), HashSet<(usize, usize)>> = HashMap::new();
+        
+        // 依赖索引构建:
+        // D_cluster[(Cu, Cv)] -> { (u, v) \in Pi } 
+        let mut d_cluster: HashMap<(usize, usize), HashSet<(usize, usize)>> = HashMap::new();
+        // D_pair[(u', v')] -> { (Cu, Cv) \in A_cluster }
+        let mut d_pair: HashMap<(usize, usize), HashSet<(usize, usize)>> = HashMap::new();
+
+        for (&(u_id, v_id), clusters) in hc_map.iter() {
+            for ((cu_id, cv_id), d_match_set) in clusters {
+                let c_pair = (*cu_id, *cv_id);
+                
+                // 填充 D_cluster
+                d_cluster.entry(c_pair).or_default().insert((u_id, v_id));
+
+                // 如果这是第一次遇到这个簇对，填充 D_pair
+                if !a_cluster_d_match.contains_key(&c_pair) {
+                    a_cluster_d_match.insert(c_pair, d_match_set.clone());
+
+                    for &(up_id, vp_id) in d_match_set {
+                        d_pair.entry((up_id, vp_id)).or_default().insert(c_pair);
+                    }
+                }
+            }
+        }
+
+        info!("1. 初始化 Pi 并获取 HC 和 D-match");
+
+        // 2. 初始化 V_C (Valid Clusters)
+        let mut v_c: HashSet<(usize, usize)> = HashSet::new();
+        for (c_pair, d_match_set) in &a_cluster_d_match {
+            // 条件 2.b: D-match 的所有元素都必须在当前的 Pi 中
+            if d_match_set.is_subset(&pi) {
+                v_c.insert(*c_pair);
+            }
+        }
+
+        info!("2. 初始化 V_C (Valid Clusters)");
+
+        // 3. 找出失效的 (u, v) 加入队列 Q
+        let mut q: VecDeque<(usize, usize)> = VecDeque::new();
+        let mut pi_retained = pi.clone();
+
+        for &(u_id, v_id) in &pi {
+            let mut all_in_vc = true;
+            if let Some(clusters) = hc_map.get(&(u_id, v_id)) {
+                for (c_pair, _) in clusters {
+                    if !v_c.contains(c_pair) {
+                        all_in_vc = false;
+                        break;
+                    }
+                }
+            }
+
+            if !all_in_vc {
+                q.push_back((u_id, v_id));      // 加入 Worklist
+                pi_retained.remove(&(u_id, v_id)); // Pi = Pi \ Q
+            }
+        }
+        pi = pi_retained;
+
+        info!("3. 找出失效的 (u, v) 加入队列 Q");
+
+        // ==========================================
+        // Phase 2: Cascade deletions via the queue
+        // ==========================================
+        while let Some((up_id, vp_id)) = q.pop_front() {
+            // 获取所有依赖于已删除节点对 (u', v') 的簇对 (Cu, Cv)
+            if let Some(dependent_clusters) = d_pair.get(&(up_id, vp_id)) {
+                for c_pair in dependent_clusters {
+                    // 如果簇对仍然被认为是有效的，现在它失效了
+                    if v_c.contains(c_pair) {
+                        v_c.remove(c_pair); // V_c = V_c \ {(Cu, Cv)}
+
+                        // 级联使依赖这个失效簇对的 (u, v) 失效
+                        if let Some(dependent_node_pairs) = d_cluster.get(c_pair) {
+                            for node_pair in dependent_node_pairs {
+                                if pi.contains(node_pair) {
+                                    pi.remove(node_pair);
+                                    q.push_back(*node_pair);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        info!("结束了主调用");
+
+        // ==========================================
+        // Phase 3: Return ID-based Result
+        // ==========================================
+        pi
     }
 }
 
